@@ -1,17 +1,19 @@
 # Cakhenn
 
+*Putting the "scroll" into side-scrolling.*
+
 A side-scrolling beat 'em up in the spirit of Streets of Rage, played by **scrolling**.
 
 Pick a level from the menu, then scroll down (mouse wheel, trackpad, or swipe on a phone) and the
 fight plays out. Scroll up to rewind. Beat a level and you're taken back to the menu with the next
 one unlocked. Progress is saved in your browser.
 
-| Level | Where | Boss |
-|---|---|---|
-| 1 | Neon Street | Big Mo |
-| 2 | Subway | Volt |
-| 3 | Harbor | Anchor |
-| 4 | Rooftop | Mr. Kane |
+| Level | Where | Set-piece | Boss |
+|---|---|---|---|
+| 1 | Neon Street | Rainy street brawl | Big Mo |
+| 2 | Subway | A gang pours out of an arriving train; you board it and fight on while it brakes and lurches | Volt |
+| 3 | Harbor | Container ambush; the boss throws barrels (dodge one, kick one back) | Anchor |
+| 4 | Rooftop | Boss rush of every earlier boss, then a helicopter drop onto the helipad | Mr. Kane |
 
 Everything is a single self-contained `index.html` with no assets, libraries or build step. The
 pixel art, backgrounds and font are all drawn in code on a `<canvas>`.
