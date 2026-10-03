@@ -1,4 +1,4 @@
-# Cakhenn
+# Caken
 
 *Putting the "scroll" into side-scrolling.*
 
