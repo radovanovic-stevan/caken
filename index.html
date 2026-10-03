@@ -10,19 +10,24 @@
   html, body { margin: 0; padding: 0; background: #07050f; overscroll-behavior: none; }
   #game { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; display: block; }
   #track { width: 1px; }
-  #menuBtn {
-    position: fixed; right: 12px; bottom: 14px; z-index: 2; display: none;
+  #ui { position: fixed; right: 12px; bottom: 14px; z-index: 2; display: flex; gap: 8px; }
+  #ui button {
     font: bold 13px/1 monospace; letter-spacing: 1px; color: #ffd24a; cursor: pointer;
     background: rgba(16, 8, 34, 0.75); border: 2px solid #ffd24a; padding: 7px 10px;
   }
-  #menuBtn:hover { background: rgba(60, 20, 70, 0.9); }
+  #ui button:hover { background: rgba(60, 20, 70, 0.9); }
+  #ui button.off { color: #8a80c0; border-color: #8a80c0; }
+  #menuBtn { display: none; }
   noscript { color: #fff; font-family: monospace; position: fixed; top: 40%; width: 100%; text-align: center; }
 </style>
 </head>
 <body>
 <canvas id="game" aria-label="Cakhenn - a beat 'em up that advances as you scroll"></canvas>
 <div id="track"></div>
-<button id="menuBtn" type="button">&lt; MENU</button>
+<div id="ui">
+  <button id="menuBtn" type="button">&lt; MENU</button>
+  <button id="soundBtn" type="button" aria-pressed="true">&#9835; ON</button>
+</div>
 <noscript>This page needs JavaScript to play.</noscript>
 <script>
 (() => {
@@ -1793,10 +1798,164 @@ function renderMenu(now) {
 }
 
 /* =========================================================================
+   8-BIT MUSIC (Web Audio): pulse-wave lead and arpeggio, triangle bass,
+   noise drums. Songs loop in real time; which song plays follows the game.
+   Notation: one token per 16th note. 'A4' plays a note, '-' holds, '.' rests.
+   ========================================================================= */
+const SONGS = {
+  menu: { bpm: 112, chords: ['Am', 'F', 'C', 'G'], soft: true,
+    lead: `A4 - - C5 - - E5 - D5 - C5 - B4 - C5 -  A4 - - - . . A4 C5 F5 - E5 - D5 - C5 -
+           G4 - - C5 - - E5 - G5 - - E5 D5 - C5 -  B4 - - - D5 - - - G4 - - - . . . .`,
+    kick: 'x.......x.......', snare: '....x.......x...', hat: '..x...x...x...x.' },
+  level0: { bpm: 138, chords: ['Em', 'C', 'D', 'B'],
+    lead: `E5 - E5 . D5 - E5 - G5 - E5 - D5 - B4 -  C5 - - - E5 - G5 - E5 - D5 - C5 - B4 -
+           A4 - - D5 - - F#5 - A5 - - F#5 E5 - D5 -  D#5 - - - F#5 - - - B5 - - - A5 - F#5 -`,
+    kick: 'x...x...x...x...', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' },
+  level1: { bpm: 150, chords: ['Dm', 'Bb', 'C', 'A'],
+    lead: `D5 . D5 . F5 . D5 . A5 - G5 - F5 - E5 -  D5 - - - F5 - - - Bb5 - A5 - G5 - F5 -
+           E5 . E5 . G5 . E5 . C6 - Bb5 - A5 - G5 -  A5 - - - C#6 - - - E6 - - - . . A4 C#5`,
+    kick: 'x..x..x.x..x..x.', snare: '....x.......x..x', hat: 'xxxxxxxxxxxxxxxx' },
+  level2: { bpm: 120, chords: ['G', 'Em', 'C', 'D'],
+    lead: `B4 - D5 - G5 - - - F#5 - G5 - A5 - G5 -  E5 - - - B4 - - - E5 - G5 - B5 - - -
+           C6 - - B5 A5 - G5 - E5 - - - G5 - - -  F#5 - - - A5 - - - D5 - E5 - F#5 - - -`,
+    kick: 'x.....x.x.......', snare: '....x.......x...', hat: 'x.x.x.x.x.x.x.x.' },
+  level3: { bpm: 160, chords: ['C#m', 'A', 'B', 'G#'],
+    lead: `C#5 C#5 . C#5 E5 . G#5 . C#6 - B5 - G#5 - E5 -  A4 A4 . A4 C#5 . E5 . A5 - G#5 - E5 - C#5 -
+           B4 B4 . B4 D#5 . F#5 . B5 - A5 - F#5 - D#5 -  G#5 - - - C6 - - - D#6 - - - C6 - G#5 -`,
+    kick: 'x...x...x...x...', snare: '....x.......x.x.', hat: 'xxxxxxxxxxxxxxxx' },
+  boss: { bpm: 168, chords: ['Am', 'Bb', 'Am', 'E'],
+    lead: `A4 . A4 . C5 . A4 . D#5 - E5 - . . C5 .  Bb4 . Bb4 . D5 . Bb4 . E5 - F5 - . . D5 .
+           A5 - G#5 - A5 - E5 - C5 - A4 - C5 - E5 -  G#5 - - - B5 - - - D6 - - - B5 - G#5 -`,
+    kick: 'x.x.x.x.x.x.x.x.', snare: '....x.......x...', hat: '..x...x...x...x.' },
+  clear: { bpm: 150, chords: ['C', 'G', 'C'], once: true,
+    lead: `C5 E5 G5 C6 - - G5 - C6 - - - . . . .  B5 - G5 - D5 - B5 - G5 - - - . . . .  C6 - - - - - - - - - - - . . . .`,
+    kick: 'x...............', snare: '', hat: '' },
+};
+
+const Music = (() => {
+  const KEY = 'cakhenn.music';
+  let enabled = true;
+  try { enabled = localStorage.getItem(KEY) !== 'off'; } catch (e) { /* storage unavailable */ }
+  let ac = null, master, pulse25, pulse12, noise, timer, cur = null, wanted = null;
+
+  const midi = n => { const m = /^([A-G])([#b]?)(\d)$/.exec(n); return 12 * (+m[3] + 1) + { C:0, D:2, E:4, F:5, G:7, A:9, B:11 }[m[1]] + (m[2] === '#' ? 1 : m[2] === 'b' ? -1 : 0); };
+  const hz = m => 440 * Math.pow(2, (m - 69) / 12);
+  // compile each song once: lead notes with lengths, chord roots/thirds
+  for (const sg of Object.values(SONGS)) {
+    const tok = sg.lead.trim().split(/\s+/);
+    sg.len = sg.chords.length * 16;
+    sg.notes = [];
+    tok.forEach((tk, i) => {
+      if (tk === '-' || tk === '.') return;
+      let n = 1; while (tok[i + n] === '-') n++;
+      sg.notes[i] = { m: midi(tk), n };
+    });
+    sg.ch = sg.chords.map(c => { const m = /^([A-G][#b]?)(m?)$/.exec(c); return { root: midi(m[1] + '2'), third: m[2] ? 3 : 4 }; });
+  }
+
+  function pulseWave(duty) {
+    const n = 32, re = new Float32Array(n), im = new Float32Array(n);
+    for (let k = 1; k < n; k++) im[k] = (2 / (k * Math.PI)) * Math.sin(k * Math.PI * duty);
+    return ac.createPeriodicWave(re, im);
+  }
+  function init() {
+    if (ac) return;
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return;
+    ac = new AC();
+    master = ac.createGain(); master.gain.value = enabled ? 0.55 : 0; master.connect(ac.destination);
+    pulse25 = pulseWave(0.25); pulse12 = pulseWave(0.125);
+    noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
+    const d = noise.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    timer = setInterval(tick, 25);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) ac.suspend(); else if (enabled) ac.resume(); });
+  }
+  function tone(bus, wave, m, t, dur, vol) {
+    const o = ac.createOscillator(), gn = ac.createGain();
+    if (typeof wave === 'string') o.type = wave; else o.setPeriodicWave(wave);
+    o.frequency.value = hz(m);
+    gn.gain.setValueAtTime(vol, t);
+    gn.gain.setValueAtTime(vol, t + dur * 0.8);
+    gn.gain.linearRampToValueAtTime(0, t + dur);
+    o.connect(gn); gn.connect(bus); o.start(t); o.stop(t + dur + 0.02);
+  }
+  function hit(bus, kind, t) {
+    if (kind === 'kick') {
+      const o = ac.createOscillator(), gn = ac.createGain();
+      o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.12);
+      gn.gain.setValueAtTime(0.5, t); gn.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+      o.connect(gn); gn.connect(bus); o.start(t); o.stop(t + 0.16);
+      return;
+    }
+    const src = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain();
+    src.buffer = noise;
+    const snare = kind === 'snare', len = snare ? 0.12 : 0.04;
+    f.type = snare ? 'bandpass' : 'highpass'; f.frequency.value = snare ? 1800 : 7000;
+    gn.gain.setValueAtTime(snare ? 0.22 : 0.06, t); gn.gain.exponentialRampToValueAtTime(0.001, t + len);
+    src.connect(f); f.connect(gn); gn.connect(bus);
+    src.start(t, Math.random() * 0.5); src.stop(t + len + 0.01);
+  }
+  function scheduleStep(c, i, t) {
+    const sg = c.song, st = 60 / sg.bpm / 4, k = i % sg.len, bar = sg.ch[Math.floor(k / 16)], s = k % 16;
+    const note = sg.notes[k];
+    if (note) tone(c.bus, pulse25, note.m, t, note.n * st * 0.95, sg.soft ? 0.07 : 0.09);
+    const arp = [0, bar.third, 7, 12][s % 4];
+    tone(c.bus, pulse12, bar.root + 24 + arp, t, st * 0.9, sg.soft ? 0.025 : 0.035);
+    if (s % 2 === 0) tone(c.bus, 'triangle', bar.root + (s % 4 ? 12 : 0), t, st * 1.8, 0.16);
+    if (sg.kick[s] === 'x') hit(c.bus, 'kick', t);
+    if (sg.snare[s] === 'x') hit(c.bus, 'snare', t);
+    if (sg.hat[s] === 'x') hit(c.bus, 'hat', t);
+  }
+  function tick() {
+    if (!cur || !enabled) return;
+    const st = 60 / cur.song.bpm / 4;
+    while (cur.next < ac.currentTime + 0.12) {
+      if (cur.song.once && cur.step >= cur.song.len) return;
+      scheduleStep(cur, cur.step, cur.next);
+      cur.next += st; cur.step++;
+    }
+  }
+  function start(name) {
+    if (cur) { const old = cur.bus; old.gain.setTargetAtTime(0, ac.currentTime, 0.08); setTimeout(() => old.disconnect(), 600); }
+    cur = null;
+    if (!name || !SONGS[name]) return;
+    const bus = ac.createGain(); bus.connect(master);
+    cur = { name, song: SONGS[name], bus, step: 0, next: ac.currentTime + 0.06 };
+  }
+  return {
+    get enabled() { return enabled; },
+    // call from a click/tap/key handler: browsers only allow audio after a user gesture
+    unlock() { init(); if (ac && enabled && ac.state !== 'running') ac.resume(); },
+    want(name) {
+      if (name === wanted) return;
+      wanted = name;
+      if (ac) start(name);
+    },
+    toggle() {
+      enabled = !enabled;
+      try { localStorage.setItem(KEY, enabled ? 'on' : 'off'); } catch (e) { /* storage unavailable */ }
+      init();
+      if (!ac) return enabled;
+      master.gain.setTargetAtTime(enabled ? 0.55 : 0, ac.currentTime, 0.05);
+      if (enabled) { ac.resume(); const w = wanted; wanted = null; this.want(w); }
+      return enabled;
+    },
+    restartIfIdle() { if (ac && !cur && wanted) start(wanted); },
+  };
+})();
+
+/* =========================================================================
    SCREEN BLIT, SIZING, INPUT, LOOP
    ========================================================================= */
 const track = document.getElementById('track');
 const menuBtn = document.getElementById('menuBtn');
+const soundBtn = document.getElementById('soundBtn');
+function showSound() {
+  soundBtn.innerHTML = Music.enabled ? '&#9835; ON' : '&#9835; OFF';
+  soundBtn.classList.toggle('off', !Music.enabled);
+  soundBtn.setAttribute('aria-pressed', String(Music.enabled));
+}
+showSound();
 const RETURN_DELAY = 3;
 let state = 'menu', shownT = 0, frozenT = null, lastW = 0, lastH = 0;
 
@@ -1877,6 +2036,9 @@ cv.addEventListener('mousemove', e => {
 });
 cv.addEventListener('mouseleave', () => { hover = -1; });
 menuBtn.addEventListener('click', goMenu);
+soundBtn.addEventListener('click', () => { Music.toggle(); showSound(); soundBtn.blur(); });
+// any click, tap or key press unlocks audio (browsers block it until then)
+for (const ev of ['pointerdown', 'keydown', 'touchend']) addEventListener(ev, () => { Music.unlock(); Music.restartIfIdle(); }, { capture: true });
 addEventListener('keydown', e => {
   if (state === 'menu') {
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { hover = -1; sel = (sel + (e.key === 'ArrowDown' ? 1 : LEVELS.length - 1)) % LEVELS.length; e.preventDefault(); }
@@ -1897,6 +2059,7 @@ function frame(ms) {
   if (state === 'menu') {
     renderMenu(now);
     blit(null, 'TAP A LEVEL TO START', false);
+    Music.want('menu');
   } else {
     const target = clamp(scrollY / PX_PER_UNIT, 0, T_END);
     shownT += (target - shownT) * (1 - Math.exp(-dt * 7));
@@ -1905,6 +2068,7 @@ function frame(ms) {
     if (t >= T_CLEAR) markCleared(LV_INDEX);
     endHold = t >= T_END - 0.05 ? endHold + dt : 0;
     renderPlay(t, now);
+    Music.want(t >= T_CLEAR ? 'clear' : t >= WARN[0] ? 'boss' : 'level' + LV_INDEX);
     blit(t / T_END, t < T_END - 0.5 ? 'SCROLL TO ADVANCE' : 'TAP TO CONTINUE', true);
     if (endHold > RETURN_DELAY && frozenT === null) goMenu();
   }
